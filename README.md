@@ -1,13 +1,13 @@
 # 电商评论二分类情感分析
 
-基于多种方法（传统机器学习 / 深度学习 / 预训练模型）的**中文电商评论情感二分类**项目，将 1-3 星归为差评（negative），4-5 星归为好评（positive），并提供 Gradio 交互式 Web Demo。
+基于多种方法（传统机器学习 / 深度学习 / 预训练模型）的**中文电商评论情感二分类**项目，将 1-3 星归为差评（negative），4-5 星归为好评（positive），并提供支持 7 种模型实时切换与置信度展示的 Gradio Web Demo。
 
 ## 项目结构
 
 ```
 ├── app/                        # Gradio Web Demo
-│   ├── demo.py                 #   推理界面入口
-│   └── model_loader.py         #   统一模型加载与预测接口
+│   ├── demo.py                 #   Blocks 界面（模型切换、预测、置信度）
+│   └── model_loader.py         #   统一加载 7 种模型并提供 predict() 接口
 ├── data/
 │   ├── raw/                    # 原始数据（.csv/.tsv/.json/.jsonl）
 │   ├── processed/              # 采样后的 train/val/test.csv
@@ -183,7 +183,12 @@ python scripts/05_evaluate_all.py
 python app/demo.py
 ```
 
-启动 Gradio 界面，自动加载 results.csv 中 Macro-F1 最高的模型进行推理。
+基于 Gradio Blocks 构建，功能包括：
+- **模型选择下拉框**：在全部 7 个模型间实时切换，切换后自动更新该模型的测试集指标
+- **单条预测**：输入评论，显示预测标签及正负类置信度
+- **示例库**：内置多条中文评论示例，点击即可快速测试
+
+默认加载 `results.csv` 中 Macro-F1 最高的模型（当前为 RoBERTa）。`app/model_loader.py` 提供统一的 `SentimentPredictor` 类，支持所有 7 种模型的加载与推理，传统 ML / DL / 预训练模型均通过同一个 `predict()` 接口调用。
 
 ## 模型详情
 

@@ -27,7 +27,15 @@ This ensures scripts work from any working directory without package installatio
 
 **Training scripts are independent entry points**. They do not import each other. They share `src/metrics.py` (evaluation) and `src/plot.py` (visualization), but each owns its own `train_model()` function and its own model definitions.
 
-**Data flow**: `01_sampling.py` (merge + balance → pos/neg 1:1) → `train.csv / val.csv / test.csv` → `02/03/04_train_*.py` each read these CSVs independently → append results to `outputs/results.csv` → `05_evaluate_all.py` reads `results.csv` for comparison charts.
+**Data flow**: `01_sampling.py` (merge + balance → pos/neg 1:1) → `train.csv / val.csv / test.csv` → `02/03/04_train_*.py` each read these CSVs independently → append results to `outputs/results.csv` → `05_evaluate_all.py` reads `results.csv` for comparison charts → `app/demo.py` reads `results.csv` to populate model dropdown stats.
+
+**Inference layer**: `app/model_loader.py` provides `SentimentPredictor` class that handles all 7 model types through a single `predict(text) → (label, probs)` interface:
+- Traditional ML (MultinomialNB, LinearSVC, XGBoost): pickle/json + TF-IDF vectorizer
+- DL from scratch (TextCNN, BiGRU-Attention): torch state dict + word2idx vocab
+- Pretrained (BERT, RoBERTa): transformers `from_pretrained`
+- XGBoost tuned mode (10000-dim word+char features) is auto-detected; vectorizers are rebuilt from training data if not provided
+
+`app/demo.py` is a Gradio Blocks app with model dropdown, lazy predictor caching, and shared vectorizer/word2idx resources.
 
 ## Class balance
 
