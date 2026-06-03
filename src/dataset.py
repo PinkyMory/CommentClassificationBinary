@@ -52,8 +52,12 @@ def build_vocab_from_csv(csv_path: str, min_freq: int = 2, max_vocab: int = 3000
     from collections import Counter
     df = pd.read_csv(csv_path)
     counter = Counter()
-    for text in df["text"]:
+    total = len(df)
+    for i, text in enumerate(df["text"], 1):
         counter.update(tokenize(text))
+        if i % 10000 == 0:
+            print(f"  Tokenizing... {i}/{total} ({100*i/total:.0f}%)")
+    print(f"  Tokenizing done. Raw vocab size: {len(counter):,}")
 
     vocab = {"<PAD>": 0, "<UNK>": 1}
     idx = 2
@@ -61,6 +65,7 @@ def build_vocab_from_csv(csv_path: str, min_freq: int = 2, max_vocab: int = 3000
         if freq >= min_freq:
             vocab[word] = idx
             idx += 1
+    print(f"  Vocab built: {len(vocab):,} words (min_freq={min_freq}, max_vocab={max_vocab})")
     return vocab
 
 
@@ -74,6 +79,9 @@ def build_embedding_matrix(word2idx: dict, wv_path: str = None, embed_dim: int =
         return matrix
 
     from gensim.models import KeyedVectors
+    import os
+    size_mb = os.path.getsize(wv_path) / 1024**2
+    print(f"Loading pretrained word vectors ({size_mb:.0f} MB), this may take a few minutes...")
     wv = KeyedVectors.load_word2vec_format(wv_path, binary=False)
 
     hit = 0

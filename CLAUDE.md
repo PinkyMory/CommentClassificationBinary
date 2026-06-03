@@ -27,17 +27,17 @@ This ensures scripts work from any working directory without package installatio
 
 **Training scripts are independent entry points**. They do not import each other. They share `src/metrics.py` (evaluation) and `src/plot.py` (visualization), but each owns its own `train_model()` function and its own model definitions.
 
-**Data flow**: `01_sampling.py` (excludes star=3) → `train.csv / val.csv / test.csv` → `02/03/04_train_*.py` each read these CSVs independently → append results to `outputs/results.csv` → `05_evaluate_all.py` reads `results.csv` for comparison charts.
+**Data flow**: `01_sampling.py` (merge + balance → pos/neg 1:1) → `train.csv / val.csv / test.csv` → `02/03/04_train_*.py` each read these CSVs independently → append results to `outputs/results.csv` → `05_evaluate_all.py` reads `results.csv` for comparison charts.
 
-## Class imbalance strategy
+## Class balance
 
-With star<=3 as negative, the dataset has ~19% negative, ~81% positive. Three different strategies per layer:
+Data is balanced by default via `01_sampling.py` (downsamples majority class to match minority), so training scripts do NOT use class weights / weighted sampling out of the box. Each script supports `--balanced` to re-enable imbalance handling if needed at a later time:
 
-- **Traditional ML (02)**: `LinearSVC(class_weight='balanced')`, XGBoost with `compute_sample_weight('balanced')`, MultinomialNB has no weight (relies on naive prior).
-- **DL from scratch (03)**: `WeightedRandomSampler` in DataLoader + weighted `CrossEntropyLoss` in `train_loop`.
-- **Pretrained (04)**: Custom `WeightedTrainer` subclass overriding `compute_loss` with weighted `CrossEntropyLoss`.
+- **Traditional ML (02)**: `--balanced` enables `LinearSVC(class_weight='balanced')` + XGBoost `sample_weight`.
+- **DL from scratch (03)**: `--balanced` enables `WeightedRandomSampler` + weighted `CrossEntropyLoss`.
+- **Pretrained (04)**: `--balanced` enables weighted `CrossEntropyLoss` in `WeightedTrainer`.
 
-Primary metric is **macro-F1**, not accuracy (which is misleading under imbalance).
+Primary metric is **macro-F1**.
 
 ## HuggingFace API changes (transformers 5.x)
 
@@ -61,4 +61,4 @@ The code uses transformers 5.x conventions:
 
 - `TokenizedDataset` (used by 03) pre-tokenizes all samples in `__init__`. Do NOT move `jieba.cut()` back into `__getitem__` — it would re-tokenize every epoch.
 - `build_embedding_matrix` accepts `wv_path=None` and falls back to random init. This lets `03_train_dl.py` run without pre-downloaded word vectors.
-- The raw dataset's text column is `评论内容`, star column is `评分`. Column detection in `01_sampling.py` uses priority-ordered candidate matching.
+- Column detection in `01_sampling.py` auto-detects two formats: star-rating (e.g. `评论内容` + `评分`) and pre-labeled (e.g. `review` + `label`), using priority-ordered candidate matching.
