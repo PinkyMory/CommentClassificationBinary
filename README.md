@@ -88,13 +88,27 @@ bash setup.sh
 
 ### 主要依赖
 
-- **PyTorch** >= 2.11 + CUDA
-- **Transformers** >= 5.9（HuggingFace）
-- **scikit-learn** >= 1.8
-- **XGBoost** >= 3.2
-- **jieba** >= 0.42.1（中文分词）
-- **Gradio** >= 6.15（Web Demo）
-- **gensim** >= 4.4（词向量加载）
+| 包 | 版本要求 | 用途 |
+|----|---------|------|
+| PyTorch | >= 2.11 + CUDA | 深度学习框架 |
+| Transformers | >= 5.9 | 预训练模型加载与微调 |
+| scikit-learn | >= 1.8 | 传统 ML 模型、评估、数据划分 |
+| XGBoost | >= 3.2 | 梯度提升树 |
+| jieba | >= 0.42.1 | 中文分词 |
+| Gradio | >= 6.15 | Web Demo 交互界面 |
+| gensim | >= 4.4 | 预训练词向量加载 |
+| pandas | >= 2.0 | 数据处理 |
+| numpy | >= 1.24 | 数值计算 |
+| scipy | >= 1.10 | 稀疏矩阵运算 |
+| datasets | >= 3.0 | HuggingFace 数据集接口 |
+
+当前 llm 环境版本：
+
+```
+torch 2.11.0+cu126 | transformers 5.9.0 | scikit-learn 1.8.0
+xgboost 3.2.0 | jieba 0.42.1 | gradio 6.15.0
+gensim 4.4.0 | pandas 3.0.3 | numpy 2.4.3 | scipy 1.17.1 | datasets 4.8.5
+```
 
 ## 使用流程
 
@@ -105,37 +119,42 @@ bash setup.sh
 ### Step 2: 数据采样
 
 ```bash
+# 默认合并两个数据集，均衡后划分
+python scripts/01_sampling.py
+
+# 只用单个数据集
 python scripts/01_sampling.py --input data/raw/训练集.csv
+
+# 不均衡（保留原始分布）
+python scripts/01_sampling.py --no-balance
 ```
 
-脚本会自动检测评论列和评分列，也可以手动指定：
-
-```bash
-python scripts/01_sampling.py --input data/raw/训练集.csv --text-col 评论内容 --star-col 评分
-```
-
-输出：`data/processed/train.csv`、`val.csv`、`test.csv`（分层 8:1:1 划分）。
+脚本自动识别两种格式（评分星数 / 已有 label），统一为二分类标签后下采样好评至与差评等量，最后分层划分为 `train.csv`、`val.csv`、`test.csv`（8:1:1）。
 
 ### Step 3: 训练模型
 
 **传统机器学习（TF-IDF + NB / SVM / XGBoost）**：
 
 ```bash
+# 默认训练（TF-IDF 5000 维，XGBoost 默认超参）
 python scripts/02_train_traditional.py
+
+# 调参模式：char+word 联合特征 + RandomizedSearchCV（推荐）
+python scripts/02_train_traditional.py --tune-xgboost
 ```
 
 **深度学习从头训练（TextCNN + BiGRU-Attention）**：
 
 ```bash
-python scripts/03_train_dl.py --model all          # 训练全部
-python scripts/03_train_dl.py --model textcnn      # 只训练 TextCNN
-python scripts/03_train_dl.py --model bigru_attn   # 只训练 BiGRU
-```
+# 训练全部（推荐带预训练词向量）
+python scripts/03_train_dl.py --wv-path data/embeddings/sgns.target.word-ngram.1-2.dynwin5.thr10.neg5.dim300.iter5
 
-可选：指定预训练词向量路径以提升效果：
+# 只训练一个
+python scripts/03_train_dl.py --model textcnn --wv-path data/embeddings/sgns.target.word-ngram.1-2.dynwin5.thr10.neg5.dim300.iter5
+python scripts/03_train_dl.py --model bigru_attn --wv-path data/embeddings/sgns.target.word-ngram.1-2.dynwin5.thr10.neg5.dim300.iter5
 
-```bash
-python scripts/03_train_dl.py --wv-path data/embeddings/sgns.sogou.word
+# 不使用预训练词向量（随机初始化）
+python scripts/03_train_dl.py
 ```
 
 **微调预训练模型（BERT + RoBERTa）**：
@@ -145,6 +164,8 @@ python scripts/04_train_pretrained.py --model all      # 训练全部
 python scripts/04_train_pretrained.py --model bert     # 只训练 BERT
 python scripts/04_train_pretrained.py --model roberta  # 只训练 RoBERTa
 ```
+
+> 各脚本均支持 `--balanced` 参数，用于启用类权重机制（仅在数据不均衡时有意义）。
 
 ### Step 4: 汇总结果
 
@@ -199,7 +220,7 @@ python app/demo.py
 **实现细节**：
 - 输入：TF-IDF 词频 5,000 维 + 字符级 n-gram 5,000 维 = **10,000 维**（`--tune-xgboost` 模式）
 - 超参（默认）：`n_estimators=200`，`max_depth=6`，`learning_rate=0.1`
-- 可选 `--tune-xgboost`：启用 `RandomizedSearchCV`（50 组 × 3 折，macro-F1 评分），搜索 `n_estimators`、`max_depth`、`subsample`、正则化系数等
+- 可选 `--tune-xgboost`：启用 `RandomizedSearchCV`（30 组 × 3 折，macro-F1 评分），搜索 `n_estimators`、`max_depth`、`subsample`、正则化系数等
 - 字符级特征：按字切分 n-gram (1,2,3)，捕获字面模式（如 "不好用"、"太差了"）
 
 **优点**：可处理非线性关系，内置缺失值处理，对表格型特征效果好。**缺点**：对高维稀疏文本特征不如线性模型自然，需要特征工程辅助。
