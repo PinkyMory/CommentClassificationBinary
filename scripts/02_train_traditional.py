@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import argparse
 import pickle
 import pandas as pd
 import numpy as np
@@ -34,6 +35,11 @@ def tokenize_and_join(texts: list[str]) -> list[str]:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Traditional ML training")
+    parser.add_argument("--balanced", action="store_true",
+                        help="Enable class weights for imbalanced data")
+    args = parser.parse_args()
+
     print("Loading data...")
     train_df = pd.read_csv(TRAIN_PATH)
     val_df = pd.read_csv(VAL_PATH)
@@ -59,25 +65,30 @@ def main():
     X_test_tfidf = vectorizer.transform(X_test_tokens)
     print(f"Feature dim: {X_train_tfidf.shape[1]}")
 
-    # Models (all with class_weight for imbalance)
+    linear_svc_kwargs = {"C": 1.0, "max_iter": 2000, "random_state": SEED, "dual": False}
+    xgb_kwargs = {"n_estimators": 200, "max_depth": 6, "learning_rate": 0.1,
+                  "random_state": SEED, "eval_metric": "logloss"}
+    xgb_fit_kwargs = {}
+
+    if args.balanced:
+        from sklearn.utils.class_weight import compute_sample_weight
+        linear_svc_kwargs["class_weight"] = "balanced"
+        xgb_fit_kwargs["sample_weight"] = compute_sample_weight("balanced", y_train)
+        print("Using class weights for imbalanced training")
+
     models = {
         "MultinomialNB": MultinomialNB(alpha=0.5),
-        "LinearSVC": CalibratedClassifierCV(LinearSVC(
-            C=1.0, max_iter=2000, random_state=SEED, dual=False, class_weight="balanced")),
-        "XGBoost": XGBClassifier(
-            n_estimators=200, max_depth=6, learning_rate=0.1,
-            random_state=SEED, eval_metric="logloss"),
+        "LinearSVC": CalibratedClassifierCV(LinearSVC(**linear_svc_kwargs)),
+        "XGBoost": XGBClassifier(**xgb_kwargs),
     }
-    from sklearn.utils.class_weight import compute_sample_weight
-    xgb_sample_weight = compute_sample_weight("balanced", y_train)
 
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
     for name, model in models.items():
         print(f"\n{'='*50}")
         print(f"Training {name}...")
-        if name == "XGBoost":
-            model.fit(X_train_tfidf, y_train, sample_weight=xgb_sample_weight)
+        if name == "XGBoost" and xgb_fit_kwargs:
+            model.fit(X_train_tfidf, y_train, **xgb_fit_kwargs)
         else:
             model.fit(X_train_tfidf, y_train)
         y_pred = model.predict(X_test_tfidf)

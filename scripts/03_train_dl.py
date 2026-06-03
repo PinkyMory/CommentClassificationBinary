@@ -9,8 +9,6 @@ import argparse
 import torch
 import numpy as np
 import pandas as pd
-from torch.utils.data import WeightedRandomSampler
-
 from src.config import (
     SEED, TRAIN_PATH, VAL_PATH, TEST_PATH,
     CHECKPOINT_DIR, RESULTS_PATH, FIGURE_DIR,
@@ -32,7 +30,9 @@ torch.cuda.manual_seed_all(SEED)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def compute_class_weights(csv_path: str) -> torch.Tensor:
+def compute_class_weights(csv_path: str, balanced: bool = False) -> torch.Tensor | None:
+    if not balanced:
+        return None
     from sklearn.utils.class_weight import compute_class_weight
     df = pd.read_csv(csv_path)
     y = df["label"].values
@@ -41,25 +41,29 @@ def compute_class_weights(csv_path: str) -> torch.Tensor:
     return torch.tensor(weights, dtype=torch.float32)
 
 
-def create_weighted_train_loader(csv_path, word2idx, batch_size, max_len):
+def create_train_loader(csv_path, word2idx, batch_size, max_len, balanced=False):
     from src.dataset import TokenizedDataset
     dataset = TokenizedDataset(csv_path, word2idx, max_len)
-    df = pd.read_csv(csv_path)
-    labels = df["label"].values
-    from sklearn.utils.class_weight import compute_sample_weight
-    sample_weights = compute_sample_weight("balanced", labels)
-    sampler = WeightedRandomSampler(
-        weights=torch.tensor(sample_weights, dtype=torch.float64),
-        num_samples=len(dataset), replacement=True)
-    from torch.utils.data import DataLoader
-    return DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+    if balanced:
+        from torch.utils.data import WeightedRandomSampler, DataLoader
+        df = pd.read_csv(csv_path)
+        labels = df["label"].values
+        from sklearn.utils.class_weight import compute_sample_weight
+        sample_weights = compute_sample_weight("balanced", labels)
+        sampler = WeightedRandomSampler(
+            weights=torch.tensor(sample_weights, dtype=torch.float64),
+            num_samples=len(dataset), replacement=True)
+        return DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+    else:
+        from src.dataset import create_data_loader
+        return create_data_loader(csv_path, word2idx, batch_size, max_len, shuffle=True)
 
 
-def train_model(model_type: str, embedding_matrix, word2idx, class_weights):
+def train_model(model_type: str, embedding_matrix, word2idx, class_weights, balanced: bool = False):
     print(f"\n{'='*50}")
     print(f"Training {model_type}")
 
-    train_loader = create_weighted_train_loader(TRAIN_PATH, word2idx, BATCH_SIZE_DL, MAX_SEQ_LEN)
+    train_loader = create_train_loader(TRAIN_PATH, word2idx, BATCH_SIZE_DL, MAX_SEQ_LEN, balanced=balanced)
     val_loader = create_data_loader(VAL_PATH, word2idx, BATCH_SIZE_DL, MAX_SEQ_LEN, shuffle=False)
     test_loader = create_data_loader(TEST_PATH, word2idx, BATCH_SIZE_DL, MAX_SEQ_LEN, shuffle=False)
 
@@ -98,18 +102,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="all", choices=["textcnn", "bigru_attn", "all"])
     parser.add_argument("--wv-path", type=str, default=None, help="Pretrained Word2Vec path")
+    parser.add_argument("--balanced", action="store_true",
+                        help="Enable WeightedRandomSampler + weighted loss for imbalanced data")
     args = parser.parse_args()
 
     print("Building vocabulary...")
     word2idx = build_vocab_from_csv(TRAIN_PATH, min_freq=2)
     embedding_matrix = build_embedding_matrix(word2idx, args.wv_path, EMBEDDING_DIM)
-    class_weights = compute_class_weights(TRAIN_PATH)
+    class_weights = compute_class_weights(TRAIN_PATH, balanced=args.balanced)
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
     if args.model in ("textcnn", "all"):
-        train_model("textcnn", embedding_matrix, word2idx, class_weights)
+        train_model("textcnn", embedding_matrix, word2idx, class_weights, balanced=args.balanced)
     if args.model in ("bigru_attn", "all"):
-        train_model("bigru_attn", embedding_matrix, word2idx, class_weights)
+        train_model("bigru_attn", embedding_matrix, word2idx, class_weights, balanced=args.balanced)
 
 
 if __name__ == "__main__":

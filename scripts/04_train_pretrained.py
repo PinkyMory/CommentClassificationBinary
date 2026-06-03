@@ -19,8 +19,6 @@ from transformers import (
 )
 from datasets import Dataset
 from sklearn.metrics import accuracy_score, f1_score
-from sklearn.utils.class_weight import compute_class_weight
-
 from src.config import (
     SEED, TRAIN_PATH, VAL_PATH, TEST_PATH,
     CHECKPOINT_DIR, RESULTS_PATH, FIGURE_DIR,
@@ -71,7 +69,7 @@ def load_csv_as_dataset(csv_path: str) -> Dataset:
     return Dataset.from_pandas(df[["text", "label"]])
 
 
-def train_model(model_name: str, model_path: str):
+def train_model(model_name: str, model_path: str, balanced: bool = False):
     print(f"\n{'='*50}")
     print(f"Fine-tuning {model_name}")
 
@@ -102,10 +100,13 @@ def train_model(model_name: str, model_path: str):
     ds_val = ds_val.map(tokenize_fn, batched=True)
     ds_test = ds_test.map(tokenize_fn, batched=True)
 
-    train_labels = pd.read_csv(TRAIN_PATH)["label"].values
-    weights = compute_class_weight("balanced", classes=np.array([0, 1]), y=train_labels)
-    class_weights = torch.tensor(weights, dtype=torch.float32)
-    print(f"Class weights: neg={weights[0]:.3f}, pos={weights[1]:.3f}")
+    class_weights = None
+    if balanced:
+        from sklearn.utils.class_weight import compute_class_weight
+        train_labels = pd.read_csv(TRAIN_PATH)["label"].values
+        weights = compute_class_weight("balanced", classes=np.array([0, 1]), y=train_labels)
+        class_weights = torch.tensor(weights, dtype=torch.float32)
+        print(f"Class weights: neg={weights[0]:.3f}, pos={weights[1]:.3f}")
 
     output_dir = CHECKPOINT_DIR / f"{model_name}_intermediate"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -188,12 +189,14 @@ def train_model(model_name: str, model_path: str):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="all", choices=["bert", "roberta", "all"])
+    parser.add_argument("--balanced", action="store_true",
+                        help="Enable weighted CrossEntropyLoss for imbalanced data")
     args = parser.parse_args()
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     if args.model in ("bert", "all"):
-        train_model("bert", BERT_MODEL_NAME)
+        train_model("bert", BERT_MODEL_NAME, balanced=args.balanced)
     if args.model in ("roberta", "all"):
-        train_model("roberta", ROBERTA_MODEL_NAME)
+        train_model("roberta", ROBERTA_MODEL_NAME, balanced=args.balanced)
 
 
 if __name__ == "__main__":

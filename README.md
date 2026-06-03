@@ -47,17 +47,26 @@
 
 > 3 星评论归为差评（negative），不做排除处理。
 
-## 类不平衡处理
+## 数据均衡
 
-差评占比约 19%，好评约 81%，存在明显类别不平衡。各方法对应策略：
+`01_sampling.py` 默认合并 `训练集.csv` + `online_shopping_10_cats.csv`，通过下采样好评使正负比例达到 1:1。因此**默认训练时无需额外的类不平衡处理**。
 
-| 方法 | 不平衡处理 |
+如果使用其他未均衡的数据，可通过 `--balanced` 启用各脚本的类权重机制：
+
+```bash
+python scripts/02_train_traditional.py --balanced
+python scripts/03_train_dl.py --balanced
+python scripts/04_train_pretrained.py --balanced
+```
+
+各方法的 `--balanced` 对应策略：
+
+| 方法 | --balanced 启用时 |
 |------|-----------|
 | LinearSVC | `class_weight='balanced'` |
 | XGBoost | `compute_sample_weight('balanced')` |
-| MultinomialNB | 依赖朴素先验（无额外加权） |
 | TextCNN / BiGRU | WeightedRandomSampler + 加权 CrossEntropyLoss |
-| BERT / RoBERTa | 自定义 WeightedTrainer，重写 compute_loss |
+| BERT / RoBERTa | 加权 CrossEntropyLoss |
 
 **主要评价指标**：Macro-F1（在类别不平衡下比 Accuracy 更可靠）。
 
