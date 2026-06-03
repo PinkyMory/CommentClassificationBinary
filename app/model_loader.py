@@ -4,6 +4,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 
 class SentimentPredictor:
@@ -29,10 +30,43 @@ class SentimentPredictor:
             raise ValueError(f"Unknown model_type: {model_type}")
 
     def _load_traditional(self, **kwargs):
-        self.model = pickle.load(open(self.model_path, "rb"))
-        self.vectorizer = kwargs.get("vectorizer")
-        if self.vectorizer is None:
-            raise ValueError("Traditional models require vectorizer (TfidfVectorizer)")
+        if self.model_type == "xgboost":
+            from xgboost import XGBClassifier
+            self.model = XGBClassifier()
+            self.model.load_model(self.model_path)
+            self.vectorizer = kwargs.get("vectorizer")
+            if self.vectorizer is None:
+                # Rebuild word+char TF-IDF for tuned XGBoost (10000-dim)
+                self._build_xgboost_vectorizers()
+        else:
+            self.model = pickle.load(open(self.model_path, "rb"))
+            self.vectorizer = kwargs.get("vectorizer")
+            if self.vectorizer is None:
+                raise ValueError("Traditional models require vectorizer (TfidfVectorizer)")
+
+    def _build_xgboost_vectorizers(self):
+        import pandas as pd
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from scipy.sparse import hstack
+        from src.config import TRAIN_PATH, VAL_PATH, TFIDF_MAX_FEATURES
+
+        train_df = pd.read_csv(TRAIN_PATH)
+        val_df = pd.read_csv(VAL_PATH)
+        df = pd.concat([train_df, val_df], ignore_index=True)
+        texts = df["text"].tolist()
+
+        # Word-level (jieba)
+        from src.preprocess import tokenize
+        word_texts = [" ".join(tokenize(t)) for t in texts]
+        self._vec_word = TfidfVectorizer(max_features=TFIDF_MAX_FEATURES, ngram_range=(1, 2))
+        self._vec_word.fit(word_texts)
+
+        # Char-level
+        self._vec_char = TfidfVectorizer(max_features=TFIDF_MAX_FEATURES, analyzer="char", ngram_range=(1, 3))
+        self._vec_char.fit(texts)
+
+        # Store as a combined pipeline for predict
+        self.vectorizer = "xgboost_combined"  # marker for predict method
 
     def _load_dl(self, **kwargs):
         from src.config import EMBEDDING_DIM, MAX_SEQ_LEN
@@ -51,7 +85,6 @@ class SentimentPredictor:
         self.max_len = MAX_SEQ_LEN
 
     def _load_pretrained(self, **kwargs):
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
         self.model = AutoModelForSequenceClassification.from_pretrained(self.model_path)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
         self.model.eval()
@@ -63,9 +96,18 @@ class SentimentPredictor:
             import jieba
             from src.preprocess import clean_text
             cleaned = clean_text(text)
-            tokens = " ".join(jieba.cut(cleaned))
-            vec = self.vectorizer.transform([tokens])
+            if self.model_type == "xgboost" and hasattr(self, "_vec_char"):
+                # Tuned XGBoost: word + char combined features
+                from scipy.sparse import hstack
+                word_tokens = " ".join(jieba.cut(cleaned))
+                w = self._vec_word.transform([word_tokens])
+                c = self._vec_char.transform([cleaned])
+                vec = hstack([w, c])
+            else:
+                tokens = " ".join(jieba.cut(cleaned))
+                vec = self.vectorizer.transform([tokens])
             probs = self.model.predict_proba(vec)[0]
+            probs = probs.tolist() if hasattr(probs, "tolist") else list(probs)
 
         elif self.model_type in ("textcnn", "bigru_attn"):
             from src.preprocess import tokenize
