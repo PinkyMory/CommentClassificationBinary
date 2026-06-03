@@ -32,10 +32,10 @@
 │   └── models/
 │       ├── textcnn.py          # TextCNN：3/4/5-gram 多尺寸卷积核
 │       └── bigru_attn.py       # BiGRU + Bahdanau 注意力机制
+├── docs/                       # 项目文档（实验报告指南等）
 ├── notebooks/                  # 探索性分析的 Jupyter Notebook（可选）
 ├── requirements.txt            # Python 依赖
-├── setup.sh                    # 一键环境安装脚本
-└── CLAUDE.md                   # 项目开发指南（给 AI 助手使用）
+└── setup.sh                    # 一键环境安装脚本
 ```
 
 ## 标签定义
