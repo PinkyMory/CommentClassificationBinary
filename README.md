@@ -49,7 +49,7 @@
 
 ## 数据均衡
 
-`01_sampling.py` 默认合并 `训练集.csv` + `online_shopping_10_cats.csv`，通过下采样好评使正负比例达到 1:1。因此**默认训练时无需额外的类不平衡处理**。
+`01_sampling.py` 默认合并 `训练集.csv` + `online_shopping_10_cats.csv`（共 132,773 条），通过下采样好评使正负比例达到 1:1（均衡后 88,908 条）。因此**默认训练时无需额外的类不平衡处理**。
 
 如果使用其他未均衡的数据，可通过 `--balanced` 启用各脚本的类权重机制：
 
@@ -97,17 +97,17 @@ bash setup.sh
 | jieba | >= 0.42.1 | 中文分词 |
 | Gradio | >= 6.15 | Web Demo 交互界面 |
 | gensim | >= 4.4 | 预训练词向量加载 |
-| pandas | >= 2.0 | 数据处理 |
-| numpy | >= 1.24 | 数值计算 |
-| scipy | >= 1.10 | 稀疏矩阵运算 |
-| datasets | >= 3.0 | HuggingFace 数据集接口 |
+| datasets | >= 4.8 | HuggingFace 数据集接口 |
+| pandas | >= 3.0 | 数据处理 |
+| matplotlib | >= 3.10 | 图表绘制 |
+| seaborn | >= 0.13 | 可视化增强 |
 
 当前 llm 环境版本：
 
 ```
 torch 2.11.0+cu126 | transformers 5.9.0 | scikit-learn 1.8.0
-xgboost 3.2.0 | jieba 0.42.1 | gradio 6.15.0
-gensim 4.4.0 | pandas 3.0.3 | numpy 2.4.3 | scipy 1.17.1 | datasets 4.8.5
+xgboost 3.2.0 | jieba 0.42.1 | gradio 6.15.0 | gensim 4.4.0
+datasets 4.8.5 | pandas 3.0.3 | matplotlib 3.10.0 | seaborn 0.13.2
 ```
 
 ## 使用流程
@@ -218,12 +218,18 @@ python app/demo.py
 **原理**：基于梯度提升决策树（GBDT）的集成方法，每棵新树拟合前一棵树的残差。目标函数 = 损失函数 + 正则项（叶子节点数 + L2 权重）。
 
 **实现细节**：
-- 输入：TF-IDF 词频 5,000 维 + 字符级 n-gram 5,000 维 = **10,000 维**（`--tune-xgboost` 模式）
-- 超参（默认）：`n_estimators=200`，`max_depth=6`，`learning_rate=0.1`
-- 可选 `--tune-xgboost`：启用 `RandomizedSearchCV`（30 组 × 3 折，macro-F1 评分），搜索 `n_estimators`、`max_depth`、`subsample`、正则化系数等
-- 字符级特征：按字切分 n-gram (1,2,3)，捕获字面模式（如 "不好用"、"太差了"）
+- 输入：TF-IDF 词频 5,000 维 + 字符级 TF-IDF 5,000 维 = **10,000 维**（`--tune-xgboost` 模式）
+- 字符级特征：scikit-learn `analyzer='char'`，n-gram (1,3)，直接对原始文本提取，无需 jieba
+- 超参搜索策略：先从全量数据中分层抽样 15,000 条做 `RandomizedSearchCV`（20 组 × 3 折，macro-F1 评分），找到最优超参后再在全量 80,017 条上训练最终模型
+- 搜索得到的最优超参：
+  ```
+  n_estimators=500, max_depth=10, learning_rate=0.1,
+  subsample=1.0, colsample_bytree=0.8,
+  reg_alpha=1.0, reg_lambda=1.0
+  ```
+- 子集 CV Macro-F1：0.8510，全量测试集 Macro-F1：**0.8767**
 
-**优点**：可处理非线性关系，内置缺失值处理，对表格型特征效果好。**缺点**：对高维稀疏文本特征不如线性模型自然，需要特征工程辅助。
+**优点**：可处理非线性关系，内置缺失值处理，字符级特征显著弥补了词级 TF-IDF 丢失的字面模式。**缺点**：对文本特征敏感度不如神经网络，调参成本高，高维稀疏矩阵上训练较慢。
 
 ---
 
@@ -305,28 +311,33 @@ Embedding (vocab_size × 300) → BiGRU(300 → 128×2, num_layers=1)
 | BERT-base-Chinese | 0.9026 | 0.9026 | 0.9027 | 0.9025 |
 | BiGRU-Attention | 0.8903 | 0.8903 | 0.8895 | 0.8911 |
 | TextCNN | 0.8808 | 0.8808 | 0.8827 | 0.8788 |
+| XGBoost | 0.8767 | 0.8767 | 0.8758 | 0.8776 |
 | LinearSVC | 0.8477 | 0.8477 | 0.8453 | 0.8501 |
 | MultinomialNB | 0.8387 | 0.8387 | 0.8346 | 0.8427 |
-| XGBoost | 0.8114 | 0.8116 | 0.8173 | 0.8056 |
 
 ## 配置说明
 
-所有超参数集中在 [src/config.py](src/config.py)：
+主要超参数定义在 [src/config.py](src/config.py)：
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `SEED` | 42 | 全局随机种子 |
-| `USE_ALL_DATA` | True | 是否使用全部数据 |
 | `TRAIN_RATIO / VAL_RATIO / TEST_RATIO` | 0.8 / 0.1 / 0.1 | 数据集划分比例 |
 | `MAX_SEQ_LEN` | 128 | TextCNN/BiGRU 最大序列长度 |
 | `MAX_SEQ_LEN_BERT` | 256 | BERT/RoBERTa 最大序列长度 |
 | `TFIDF_MAX_FEATURES` | 5000 | TF-IDF 特征维度 |
+| `TFIDF_NGRAM_RANGE` | (1, 2) | TF-IDF n-gram 范围 |
 | `EMBEDDING_DIM` | 300 | 词向量维度 |
 | `BATCH_SIZE_DL` | 64 | DL 从头训练批次大小 |
 | `EPOCHS_DL` | 30 | DL 从头训练最大轮数 |
+| `LR_DL` | 1e-3 | DL 从头训练学习率 |
+| `DROPOUT` | 0.5 | DL 模型 Dropout 比例 |
 | `BATCH_SIZE_PRETRAINED` | 16 | 预训练模型批次大小 |
 | `EPOCHS_PRETRAINED` | 5 | 预训练模型微调轮数 |
 | `LR_PRETRAINED` | 2e-5 | 预训练模型学习率 |
+| `BERT_MODEL_NAME` | bert-base-chinese | BERT 模型标识 |
+| `ROBERTA_MODEL_NAME` | hfl/chinese-roberta-wwm-ext | RoBERTa 模型标识 |
+| `LABEL_MAP` | {0: "差评", 1: "好评"} | 标签名称映射 |
 
 ## 技术要点
 
