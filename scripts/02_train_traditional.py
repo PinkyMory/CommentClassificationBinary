@@ -60,29 +60,42 @@ def build_features(X_train_texts, X_test_texts, max_features=8000):
 
 
 def tune_xgboost(X_train, y_train):
-    """RandomizedSearchCV for XGBoost hyperparameters, optimized for macro-F1"""
+    """Search on subset, then train final model on full data with best params"""
+    from sklearn.model_selection import train_test_split
     scorer = make_scorer(f1_score, average="macro")
 
+    # Sub-sample for fast hyperparameter search
+    X_sub, _, y_sub, _ = train_test_split(
+        X_train, y_train, train_size=15000, stratify=y_train, random_state=42)
+
     param_dist = {
-        "n_estimators": [200, 300, 500, 800],
-        "max_depth": [6, 8, 10, 12],
-        "learning_rate": [0.01, 0.05, 0.1],
-        "subsample": [0.7, 0.8, 0.9, 1.0],
+        "n_estimators": [200, 300, 500],
+        "max_depth": [6, 8, 10],
+        "learning_rate": [0.05, 0.1],
+        "subsample": [0.7, 0.8, 1.0],
         "colsample_bytree": [0.6, 0.8, 1.0],
         "reg_alpha": [0, 0.1, 1.0],
-        "reg_lambda": [1.0, 2.0, 5.0],
+        "reg_lambda": [1.0, 5.0],
     }
 
     xgb = XGBClassifier(random_state=42, eval_metric="logloss", n_jobs=-1)
     search = RandomizedSearchCV(
-        xgb, param_distributions=param_dist, n_iter=30,
-        scoring=scorer, cv=3, random_state=42, n_jobs=1, verbose=1
+        xgb, param_distributions=param_dist, n_iter=20,
+        scoring=scorer, cv=3, random_state=42, n_jobs=1, verbose=2
     )
-    search.fit(X_train, y_train)
+    search.fit(X_sub, y_sub)
 
     print(f"\n  Best params: {search.best_params_}")
-    print(f"  Best CV macro-F1: {search.best_score_:.4f}")
-    return search.best_estimator_, search.best_params_
+    print(f"  Best CV macro-F1 (subset): {search.best_score_:.4f}")
+
+    # Train final model on full data with best params
+    best_params = search.best_params_.copy()
+    final_model = XGBClassifier(
+        random_state=42, eval_metric="logloss", n_jobs=-1, **best_params)
+    final_model.fit(X_train, y_train)
+    print(f"  Final model trained on {X_train.shape[0]:,} samples")
+
+    return final_model, search.best_params_
 
 
 def main():
