@@ -1,4 +1,4 @@
-"""Stratified sampling: JD review data -> binary dataset (exclude neutral), train/val/test = 8:1:1
+"""Stratified sampling: JD review data -> binary dataset (star<=3 as negative, star>=4 as positive), train/val/test = 8:1:1
 Usage: python scripts/01_sampling.py
 """
 import sys
