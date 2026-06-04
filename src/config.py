@@ -1,64 +1,135 @@
+"""
+全局配置中心
+=============================================================================
+本文件集中管理项目中所有可配置的常量、路径和辅助函数。
+所有脚本通过导入此模块获取统一的配置参数，避免硬编码和分散定义。
+
+包含以下配置大类：
+  - 项目路径（数据、输出、检查点）
+  - 随机种子
+  - 数据采样与划分比例
+  - 文本预处理参数（最大序列长度等）
+  - TF-IDF 特征提取参数
+  - Word2Vec 词向量维度
+  - 深度学习从零训练的超参数
+  - 预训练模型（BERT/RoBERTa）相关配置
+  - 标签映射（二分类：差评/好评）
+"""
+
 from pathlib import Path
 
-# ---- Project root (auto-inferred, not hardcoded) ----
+# ============================================================================
+# 项目路径
+# ============================================================================
+# 通过 __file__ 自动推导项目根目录，保证了在任何工作目录下运行脚本
+# 都能正确定位到项目根路径，无需写死绝对路径
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# ---- Data paths ----
+# ---- 数据路径 ----
+# raw/ 存放原始未处理的数据集，processed/ 存放清洗、采样、划分后的数据
 DATA_DIR = PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 EMBEDDINGS_DIR = DATA_DIR / "embeddings"
+
+# 划分后的训练/验证/测试集 CSV 文件路径
 TRAIN_PATH = PROCESSED_DIR / "train.csv"
 VAL_PATH = PROCESSED_DIR / "val.csv"
 TEST_PATH = PROCESSED_DIR / "test.csv"
 
-# ---- Output paths ----
+# ---- 输出路径 ----
+# checkpoints/ 存放训练好的模型权重和序列化文件
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
+# outputs/ 存放实验结果（results.csv）和可视化图表（figures/）
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 FIGURE_DIR = OUTPUT_DIR / "figures"
+# results.csv 汇总了所有模型的测试集评估指标，供后续分析和前端展示使用
 RESULTS_PATH = OUTPUT_DIR / "results.csv"
 
-# ---- Random seed ----
+# ============================================================================
+# 全局随机种子
+# ============================================================================
+# 固定随机种子以保证实验可复现性
+# 所有训练脚本和数据处理脚本都会设置此种子
 SEED = 42
 
-# ---- Sampling params ----
+# ============================================================================
+# 数据采样与划分参数
+# ============================================================================
+# USE_ALL_DATA: 从 01_sampling.py 传入，用于控制是否使用全部可用数据进行采样
 USE_ALL_DATA = True
+# 训练集:验证集:测试集 = 8:1:1 的划分比例
 TRAIN_RATIO = 0.8
 VAL_RATIO = 0.1
 TEST_RATIO = 0.1
+# 是否启用类别权重（用于处理不平衡数据时，通过 --balanced 参数激活）
 USE_CLASS_WEIGHT = True
 
-# ---- Text preprocessing ----
+# ============================================================================
+# 文本预处理参数
+# ============================================================================
+# 深度学习从零训练时的最大序列长度（TextCNN / BiGRU-Attention）
+# 超出截断，不足则用 <PAD> 补齐
 MAX_SEQ_LEN = 128
+# 预训练模型（BERT/RoBERTa）的最大序列长度，比从零训练更长
+# 因为 Transformer 架构可以更好地利用长距离依赖
 MAX_SEQ_LEN_BERT = 256
 
-# ---- TF-IDF ----
+# ============================================================================
+# TF-IDF 特征提取参数（传统机器学习用）
+# ============================================================================
+# 保留的 TF-IDF 特征最大维度，控制词表大小和模型复杂度
 TFIDF_MAX_FEATURES = 5000
+# n-gram 范围：(1, 2) 表示同时使用 unigram 和 bigram
+# bigram 可以捕捉词组搭配信息，如"非常 满意"
 TFIDF_NGRAM_RANGE = (1, 2)
 
-# ---- Word2Vec ----
+# ============================================================================
+# Word2Vec / 词向量参数
+# ============================================================================
+# 词向量维度，300 是 Word2Vec 的标准配置，也是大多数公开预训练向量的维度
 EMBEDDING_DIM = 300
 
-# ---- Deep learning from scratch ----
-BATCH_SIZE_DL = 64
-EPOCHS_DL = 30
-LR_DL = 1e-3
-DROPOUT = 0.5
+# ============================================================================
+# 深度学习从零训练超参数（TextCNN / BiGRU-Attention）
+# ============================================================================
+BATCH_SIZE_DL = 64          # 批大小，视 GPU 显存调整
+EPOCHS_DL = 30              # 最大训练轮数（配合 EarlyStopping 使用）
+LR_DL = 1e-3                # Adam 优化器的初始学习率
+DROPOUT = 0.5               # Dropout 概率，防止过拟合
 
-# ---- Pretrained models ----
+# ============================================================================
+# 预训练模型相关配置（BERT / RoBERTa）
+# ============================================================================
+# bert-base-chinese: Google 发布的中文 BERT，12 层，768 维隐藏层
 BERT_MODEL_NAME = "bert-base-chinese"
+# hfl/chinese-roberta-wwm-ext: 哈工大讯飞联合发布的中文 RoBERTa
+# 使用全词遮蔽策略（WWM），在大规模中文语料上训练，通常效果优于 BERT
 ROBERTA_MODEL_NAME = "hfl/chinese-roberta-wwm-ext"
-BATCH_SIZE_PRETRAINED = 16
-EPOCHS_PRETRAINED = 5
-LR_PRETRAINED = 2e-5
 
-# ---- Label mapping (binary) ----
+BATCH_SIZE_PRETRAINED = 16   # 预训练模型批大小，需要更大的显存
+EPOCHS_PRETRAINED = 5        # 微调轮数，过多容易过拟合
+LR_PRETRAINED = 2e-5         # 微调学习率，远小于从零训练（保护预训练权重不被破坏）
+
+# ============================================================================
+# 标签映射（二分类）
+# ============================================================================
+# 本项目的核心设定：星级 1-3 → 差评(0)，星级 4-5 → 好评(1)
 LABEL_MAP = {0: "差评", 1: "好评"}
 NUM_CLASSES = 2
 
-# ---- Star-to-label mapping (binary: star<=3 as negative) ----
+
 def star_to_label(star: int) -> int:
-    """1-3 star -> negative(0), 4-5 star -> positive(1)"""
+    """将 1-5 星级评分转换为二分类标签
+
+    转换规则：
+      1-3 星 → 0（差评 / negative）：用户满意度低，包含中评和差评
+      4-5 星 → 1（好评 / positive）：用户满意度高，接近好评
+
+    这种二值化方式基于电商评论的实际情况：
+      4-5 星占比通常 > 80%，1-3 星 < 20%
+      原始数据需要经过 01_sampling.py 的下采样来均衡
+    """
     if star <= 3:
         return 0
     else:
