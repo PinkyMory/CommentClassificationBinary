@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电商评论情感分析</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===================================================================
+   Design Tokens
+   =================================================================== */
+:root {
+  --ground: #FAF8F5;
+  --surface: #FFFFFF;
+  --surface-alt: #F5F2EC;
+  --ink: #1C1C1A;
+  --ink-secondary: #78736A;
+  --ink-tertiary: #A8A39A;
+  --accent: #B87B2C;
+  --accent-hover: #9C6722;
+  --accent-light: #FDF6EE;
+  --accent-border: #E8D5B4;
+  --positive: #3D8B5E;
+  --positive-bg: #EDF7F1;
+  --positive-border: #C5E5D2;
+  --negative: #D45B4A;
+  --negative-bg: #FDF3F1;
+  --negative-border: #F5D5CF;
+  --border: #E8E2D8;
+  --border-light: #F0EBE4;
+  --shadow-xs: 0 1px 2px rgba(28,28,26,0.04);
+  --shadow-sm: 0 2px 8px rgba(28,28,26,0.05);
+  --shadow-md: 0 6px 24px rgba(28,28,26,0.07);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --font-display: "Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", "Songti SC", serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  --transition-fast: 150ms ease;
+  --transition: 250ms ease;
+  --transition-slow: 500ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ===================================================================
+   Reset & Base
+   =================================================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+body {
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background: var(--ground);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 40px;
+  line-height: 1.6;
+}
+
+/* ===================================================================
+   Main Container — Desktop Horizontal Split
+   =================================================================== */
+.app {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 0;
+  max-width: 1280px;
+  width: 100%;
+  min-height: 680px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--border-light);
+  overflow: hidden;
+}
+
+/* ---- Header spans full width ---- */
+.header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 36px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.header-left h1 {
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.header-left .subtitle {
+  font-size: 0.8rem;
+  color: var(--ink-tertiary);
+  margin-top: 3px;
+  letter-spacing: 0.02em;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.model-count-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ink-secondary);
+  background: var(--surface-alt);
+  padding: 5px 12px;
+  border-radius: 99px;
+  letter-spacing: 0.02em;
+}
+
+/* Acrylic divider dot */
+.header-accent {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+/* ---- Left Panel ---- */
+.left-panel {
+  padding: 32px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+}
+
+/* ---- Right Panel ---- */
+.right-panel {
+  padding: 32px 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-alt);
+  overflow-y: auto;
+  min-height: 400px;
+}
+
+/* ===================================================================
+   Section Labels
+   =================================================================== */
+.section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-tertiary);
+  margin-bottom: 6px;
+}
+
+/* ===================================================================
+   Model Selector
+   =================================================================== */
+.model-select-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.model-select {
+  width: 100%;
+  padding: 11px 14px;
+  font-size: 0.92rem;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2378736A' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.model-select:hover { border-color: var(--accent-border); }
+.model-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(184,123,44,0.1); }
+
+.model-stats-row {
+  display: flex;
+  gap: 10px;
+}
+
+.stat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 99px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.stat-badge.f1 {
+  background: var(--accent-light);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.stat-badge.acc {
+  background: #EEF5F1;
+  color: var(--positive);
+  border: 1px solid var(--positive-border);
+}
+
+.stat-badge .stat-val {
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.stat-badge .stat-lbl {
+  opacity: 0.75;
+  font-size: 0.7rem;
+}
+
+/* ===================================================================
+   Text Input
+   =================================================================== */
+.input-wrap { display: flex; flex-direction: column; gap: 8px; }
+
+.text-input {
+  width: 100%;
+  min-height: 130px;
+  padding: 14px 16px;
+  font-size: 0.9rem;
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+  line-height: 1.7;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.text-input::placeholder { color: var(--ink-tertiary); }
+.text-input:hover { border-color: var(--accent-border); }
+.text-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(184,123,44,0.1); }
+
+/* ===================================================================
+   Analyze Button
+   =================================================================== */
+.analyze-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 28px;
+  font-size: 0.9rem;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  color: #FFFFFF;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+  letter-spacing: 0.02em;
+  align-self: flex-start;
+}
+
+.analyze-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(184,123,44,0.3);
+}
+
+.analyze-btn:active { transform: translateY(0); }
+
+.analyze-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.analyze-btn .spinner {
+  display: none;
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.analyze-btn.loading .spinner { display: block; }
+.analyze-btn.loading .btn-text { opacity: 0.7; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===================================================================
+   Examples
+   =================================================================== */
+.examples-wrap { display: flex; flex-direction: column; gap: 8px; }
+
+.example-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.example-chip {
+  padding: 7px 14px;
+  font-size: 0.8rem;
+  font-family: var(--font-ui);
+  color: var(--ink-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.example-chip:hover {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-light);
+}
+
+/* ===================================================================
+   Result Panel — States
+   =================================================================== */
+.result-container { width: 100%; max-width: 420px; }
+
+/* Empty State */
+.result-empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--ink-tertiary);
+}
+
+.result-empty .empty-icon {
+  font-size: 2.8rem;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.result-empty p {
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+/* Error State */
+.result-error {
+  text-align: center;
+  padding: 32px 20px;
+  color: var(--negative);
+  background: var(--negative-bg);
+  border: 1px solid var(--negative-border);
+  border-radius: var(--radius-md);
+}
+
+.result-error .error-icon { font-size: 1.6rem; margin-bottom: 8px; }
+.result-error p { font-size: 0.88rem; }
+
+/* Loading State */
+.result-loading {
+  display: none;
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.result-loading.active { display: block; }
+
+.loading-pulse {
+  width: 40px; height: 40px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+
+.result-loading p {
+  color: var(--ink-tertiary);
+  font-size: 0.88rem;
+}
+
+/* ---- Result Card (Success) ---- */
+.result-card {
+  display: none;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.result-card.active { display: block; }
+
+.result-card-header {
+  padding: 24px 24px 18px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.result-card-header .sentiment-emoji {
+  font-size: 2.6rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.result-card-header .sentiment-info .sentiment-label {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.result-card-header .sentiment-info .sentiment-en {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.result-card.positive .result-card-header { background: linear-gradient(135deg, #EDF7F1 0%, #F5FAF7 100%); }
+.result-card.positive .sentiment-en { color: var(--positive); }
+
+.result-card.negative .result-card-header { background: linear-gradient(135deg, #FDF3F1 0%, #FFFAF9 100%); }
+.result-card.negative .sentiment-en { color: var(--negative); }
+
+.result-card-body { padding: 20px 24px 24px; }
+
+/* Progress Bars */
+.prob-row { margin-bottom: 16px; }
+.prob-row:last-child { margin-bottom: 0; }
+
+.prob-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.prob-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.prob-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--ink-tertiary);
+}
+
+.prob-row.highlight .prob-value { color: var(--ink); }
+
+.prob-track {
+  height: 8px;
+  background: var(--border-light);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.prob-fill {
+  height: 100%;
+  border-radius: 99px;
+  width: 0%;
+  transition: width var(--transition-slow);
+}
+
+.prob-fill.pos { background: linear-gradient(90deg, #5BA87A, var(--positive)); }
+.prob-fill.neg { background: linear-gradient(90deg, #E07B6E, var(--negative)); }
+
+/* ---- Model info footnote ---- */
+.result-meta {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.73rem;
+  color: var(--ink-tertiary);
+}
+
+.result-meta .meta-dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--ink-tertiary);
+  opacity: 0.5;
+}
+
+/* ===================================================================
+   Keyboard shortcut hint
+   =================================================================== */
+.shortcut-hint {
+  font-size: 0.68rem;
+  color: var(--ink-tertiary);
+  margin-top: -6px;
+  opacity: 0.7;
+}
+
+.shortcut-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+/* ===================================================================
+   Responsive — stack vertically on narrow screens
+   =================================================================== */
+@media (max-width: 900px) {
+  body { padding: 16px; }
+
+  .app {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    border-radius: var(--radius-md);
+  }
+
+  .left-panel { border-right: none; border-bottom: 1px solid var(--border); padding: 24px 20px; }
+  .right-panel { padding: 24px 20px; min-height: 300px; }
+  .header { padding: 20px; }
+  .header-left h1 { font-size: 1.25rem; }
+}
+
+/* ===================================================================
+   Print
+   =================================================================== */
+@media print {
+  body { background: #fff; padding: 0; }
+  .app { box-shadow: none; border: none; }
+  .left-panel { display: none; }
+  .right-panel { border: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ================================================================ -->
+  <!-- Header                                                           -->
+  <!-- ================================================================ -->
+  <header class="header">
+    <div class="header-left">
+      <h1>电商评论情感分析</h1>
+      <p class="subtitle">Binary Sentiment Classification</p>
+    </div>
+    <div class="header-right">
+      <span class="header-accent" aria-hidden="true"></span>
+      <span class="model-count-badge" id="modelCount">7 个模型可用</span>
+    </div>
+  </header>
+
+  <!-- ================================================================ -->
+  <!-- Left Panel — Controls                                            -->
+  <!-- ================================================================ -->
+  <section class="left-panel">
+    <!-- Model Selector -->
+    <div class="model-select-wrap">
+      <label class="section-label" for="modelSelect">模型选择</label>
+      <select class="model-select" id="modelSelect"></select>
+      <div class="model-stats-row" id="modelStats"></div>
+    </div>
+
+    <!-- Text Input -->
+    <div class="input-wrap">
+      <label class="section-label" for="textInput">评论内容</label>
+      <textarea
+        class="text-input"
+        id="textInput"
+        placeholder="在此输入中文电商评论，例如：产品质量很好，物流也很快，非常满意！"
+      ></textarea>
+      <span class="shortcut-hint">按 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 快速分析</span>
+    </div>
+
+    <!-- Analyze Button -->
+    <button class="analyze-btn" id="analyzeBtn" type="button">
+      <span class="spinner"></span>
+      <span class="btn-text">分析情感</span>
+    </button>
+
+    <!-- Examples -->
+    <div class="examples-wrap">
+      <label class="section-label">示例评论</label>
+      <div class="example-chips" id="exampleChips"></div>
+    </div>
+  </section>
+
+  <!-- ================================================================ -->
+  <!-- Right Panel — Results                                            -->
+  <!-- ================================================================ -->
+  <section class="right-panel">
+    <div class="result-container">
+
+      <!-- Empty State -->
+      <div class="result-empty" id="resultEmpty">
+        <div class="empty-icon">&#9678;</div>
+        <p>在左侧输入评论内容<br>选择模型后点击分析</p>
+      </div>
+
+      <!-- Error State -->
+      <div class="result-error" id="resultError" style="display:none;">
+        <div class="error-icon">&#9888;</div>
+        <p id="resultErrorMsg"></p>
+      </div>
+
+      <!-- Loading State -->
+      <div class="result-loading" id="resultLoading">
+        <div class="loading-pulse"></div>
+        <p>正在分析...</p>
+      </div>
+
+      <!-- Result Card -->
+      <div class="result-card" id="resultCard">
+        <div class="result-card-header">
+          <span class="sentiment-emoji" id="sentimentEmoji"></span>
+          <div class="sentiment-info">
+            <div class="sentiment-label" id="sentimentLabel"></div>
+            <div class="sentiment-en" id="sentimentEn"></div>
+          </div>
+        </div>
+        <div class="result-card-body">
+          <div class="prob-row highlight" id="probPositive">
+            <div class="prob-label-row">
+              <span class="prob-name">好评</span>
+              <span class="prob-value" id="probPosVal">0.0%</span>
+            </div>
+            <div class="prob-track">
+              <div class="prob-fill pos" id="probPosFill" style="width:0%"></div>
+            </div>
+          </div>
+          <div class="prob-row" id="probNegative">
+            <div class="prob-label-row">
+              <span class="prob-name">差评</span>
+              <span class="prob-value" id="probNegVal">0.0%</span>
+            </div>
+            <div class="prob-track">
+              <div class="prob-fill neg" id="probNegFill" style="width:0%"></div>
+            </div>
+          </div>
+          <div class="result-meta" id="resultMeta"></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<script>
+/* ===================================================================
+   Application State
+   =================================================================== */
+const STATE = {
+  models: [],
+  currentModel: '',
+  isAnalyzing: false,
+};
+
+/* ===================================================================
+   DOM Refs
+   =================================================================== */
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+const dom = {
+  modelCount: $('#modelCount'),
+  modelSelect: $('#modelSelect'),
+  modelStats: $('#modelStats'),
+  textInput: $('#textInput'),
+  analyzeBtn: $('#analyzeBtn'),
+  exampleChips: $('#exampleChips'),
+  resultEmpty: $('#resultEmpty'),
+  resultError: $('#resultError'),
+  resultErrorMsg: $('#resultErrorMsg'),
+  resultLoading: $('#resultLoading'),
+  resultCard: $('#resultCard'),
+  sentimentEmoji: $('#sentimentEmoji'),
+  sentimentLabel: $('#sentimentLabel'),
+  sentimentEn: $('#sentimentEn'),
+  probPosVal: $('#probPosVal'),
+  probPosFill: $('#probPosFill'),
+  probNegVal: $('#probNegVal'),
+  probNegFill: $('#probNegFill'),
+  probPositive: $('#probPositive'),
+  probNegative: $('#probNegative'),
+  resultMeta: $('#resultMeta'),
+};
+
+/* ===================================================================
+   Helpers
+   =================================================================== */
+function showOnly(...els) {
+  [dom.resultEmpty, dom.resultError, dom.resultLoading, dom.resultCard]
+    .forEach(el => { if (el) el.style.display = 'none'; });
+  els.forEach(el => { if (el) el.style.display = ''; });
+  if (dom.resultCard) dom.resultCard.classList.remove('active');
+}
+
+function showEmpty() {
+  showOnly(dom.resultEmpty);
+}
+
+function showError(msg) {
+  dom.resultErrorMsg.textContent = msg || '请求失败，请重试';
+  showOnly(dom.resultError);
+}
+
+function showLoading() {
+  showOnly(dom.resultLoading);
+  if (dom.resultLoading) dom.resultLoading.classList.add('active');
+}
+
+function showResult() {
+  showOnly(dom.resultCard);
+  dom.resultCard.classList.add('active');
+}
+
+/* ===================================================================
+   Model Stats Badge
+   =================================================================== */
+function renderModelStats(model) {
+  if (!model) { dom.modelStats.innerHTML = ''; return; }
+  dom.modelStats.innerHTML = `
+    <span class="stat-badge f1">
+      <span class="stat-val">${model.macro_f1.toFixed(4)}</span>
+      <span class="stat-lbl">Macro-F1</span>
+    </span>
+    <span class="stat-badge acc">
+      <span class="stat-val">${model.accuracy.toFixed(4)}</span>
+      <span class="stat-lbl">Accuracy</span>
+    </span>`;
+}
+
+/* ===================================================================
+   Preload (warm up model)
+   =================================================================== */
+async function preloadModel(modelName) {
+  try {
+    await fetch('/api/preload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_name: modelName }),
+    });
+  } catch { /* silent — preloading is best-effort */ }
+}
+
+/* ===================================================================
+   Predict
+   =================================================================== */
+async function doPredict() {
+  const text = dom.textInput.value.trim();
+  if (!text) {
+    showError('请输入评论内容');
+    return;
+  }
+  if (!STATE.currentModel) {
+    showError('请先选择模型');
+    return;
+  }
+  if (STATE.isAnalyzing) return;
+
+  STATE.isAnalyzing = true;
+  dom.analyzeBtn.classList.add('loading');
+  dom.analyzeBtn.disabled = true;
+  showLoading();
+
+  try {
+    const resp = await fetch('/api/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, model_name: STATE.currentModel }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `请求失败 (${resp.status})`);
+    }
+
+    const data = await resp.json();
+    renderResult(data);
+  } catch (err) {
+    showError(err.message || '网络错误，请检查服务是否启动');
+  } finally {
+    STATE.isAnalyzing = false;
+    dom.analyzeBtn.classList.remove('loading');
+    dom.analyzeBtn.disabled = false;
+  }
+}
+
+/* ===================================================================
+   Render Result
+   =================================================================== */
+function renderResult(data) {
+  const { label, negative_prob, positive_prob } = data;
+  const isPos = label === '好评';
+  const posPct = (positive_prob * 100).toFixed(1);
+  const negPct = (negative_prob * 100).toFixed(1);
+
+  // Card class
+  dom.resultCard.classList.remove('positive', 'negative');
+  dom.resultCard.classList.add(isPos ? 'positive' : 'negative');
+
+  // Header
+  dom.sentimentEmoji.textContent = isPos ? '\u{1F60A}' : '\u{1F61E}';
+  dom.sentimentLabel.textContent = label;
+  dom.sentimentEn.textContent = isPos ? 'POSITIVE' : 'NEGATIVE';
+
+  // Progress — set to 0 then animate
+  dom.probPosFill.style.transition = 'none';
+  dom.probNegFill.style.transition = 'none';
+  dom.probPosFill.style.width = '0%';
+  dom.probNegFill.style.width = '0%';
+  dom.probPosVal.textContent = '0.0%';
+  dom.probNegVal.textContent = '0.0%';
+
+  // Highlight the predicted class
+  dom.probPositive.classList.toggle('highlight', isPos);
+  dom.probNegative.classList.toggle('highlight', !isPos);
+
+  // Trigger animation
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      dom.probPosFill.style.transition = '';
+      dom.probNegFill.style.transition = '';
+      dom.probPosFill.style.width = posPct + '%';
+      dom.probNegFill.style.width = negPct + '%';
+      dom.probPosVal.textContent = posPct + '%';
+      dom.probNegVal.textContent = negPct + '%';
+    });
+  });
+
+  // Meta
+  dom.resultMeta.innerHTML = `
+    <span>模型: ${STATE.currentModel}</span>
+    <span class="meta-dot"></span>
+    <span>置信度 ${Math.max(posPct, negPct)}%</span>`;
+
+  showResult();
+}
+
+/* ===================================================================
+   Initialize
+   =================================================================== */
+async function init() {
+  try {
+    const resp = await fetch('/api/models');
+    if (!resp.ok) throw new Error('Failed to load models');
+    const data = await resp.json();
+    STATE.models = data.models;
+    STATE.currentModel = data.best_model;
+
+    // Populate dropdown
+    dom.modelSelect.innerHTML = data.models.map(m =>
+      `<option value="${m.name}">${m.name}</option>`
+    ).join('');
+    dom.modelSelect.value = data.best_model;
+
+    // Show stats for best model
+    const best = data.models.find(m => m.name === data.best_model);
+    renderModelStats(best);
+
+    // Update model count
+    dom.modelCount.textContent = `${data.models.length} 个模型可用`;
+
+    // Populate examples
+    const examples = [
+      '产品质量很好，做工精细，物流也很快，非常满意！',
+      '用了不到一个月就坏了，客服也不理人，太失望了。',
+      '一般般吧，没想象中那么好用，凑合着用。',
+    ];
+    dom.exampleChips.innerHTML = examples.map((t, i) =>
+      `<button class="example-chip" data-index="${i}" title="${t.replace(/"/g, '&quot;')}">${t}</button>`
+    ).join('');
+
+    // Preload best model
+    preloadModel(data.best_model);
+  } catch (err) {
+    console.error('Init failed:', err);
+    showError('无法连接到服务器，请确认已启动 python app/server.py');
+  }
+}
+
+/* ===================================================================
+   Event Bindings
+   =================================================================== */
+dom.analyzeBtn.addEventListener('click', doPredict);
+
+dom.modelSelect.addEventListener('change', () => {
+  const name = dom.modelSelect.value;
+  STATE.currentModel = name;
+  const model = STATE.models.find(m => m.name === name);
+  renderModelStats(model);
+  preloadModel(name);
+});
+
+// Example chips click
+dom.exampleChips.addEventListener('click', (e) => {
+  const chip = e.target.closest('.example-chip');
+  if (!chip) return;
+  dom.textInput.value = chip.textContent.trim();
+  dom.textInput.focus();
+});
+
+// Ctrl+Enter shortcut
+dom.textInput.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    doPredict();
+  }
+});
+
+// Bootstrap
+init();
+</script>
+
+</body>
+</html>

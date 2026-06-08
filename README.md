@@ -1,6 +1,6 @@
 # 电商评论二分类情感分析
 
-基于多种方法（传统机器学习 / 深度学习 / 预训练模型）的**中文电商评论情感二分类**项目，将 1-3 星归为差评（negative），4-5 星归为好评（positive），并提供支持 7 种模型实时切换与置信度展示的 Gradio Web Demo。
+基于多种方法（传统机器学习 / 深度学习 / 预训练模型）的**中文电商评论情感二分类**项目，将 1-3 星归为差评（negative），4-5 星归为好评（positive），并提供支持 7 种模型实时切换与置信度展示的 Web Demo（Gradio 版 + 独立 FastAPI 桌面版）。
 
 ---
 
@@ -32,8 +32,11 @@
 ## 项目结构
 
 ```
-├── app/                        # Gradio Web Demo
-│   ├── demo.py                 #   Blocks 界面（模型切换、预测、置信度）
+├── app/                        # Web Demo
+│   ├── demo.py                 #   Gradio 版界面（模型切换、预测、置信度）
+│   ├── server.py               #   FastAPI 版后端（REST API + 静态页面托管）
+│   ├── static/
+│   │   └── index.html          #   独立桌面优化前端（暖调配色、双栏布局）
 │   └── model_loader.py         #   统一加载 7 种模型并提供 predict() 接口
 ├── data/
 │   ├── raw/                    # 原始数据（.csv/.tsv/.json/.jsonl）
@@ -168,7 +171,9 @@ bash setup.sh
 | scikit-learn | >= 1.8 | 传统 ML 模型、评估、数据划分 |
 | XGBoost | >= 3.2 | 梯度提升树 |
 | jieba | >= 0.42.1 | 中文分词 |
-| Gradio | >= 6.15 | Web Demo 交互界面 |
+| Gradio | >= 6.15 | Web Demo 交互界面（Gradio 版） |
+| FastAPI | >= 0.136 | Web Demo 后端 API（桌面版） |
+| uvicorn | >= 0.48 | ASGI 服务器（桌面版） |
 | gensim | >= 4.4 | 预训练词向量加载 |
 | datasets | >= 4.8 | HuggingFace 数据集接口 |
 | pandas | >= 3.0 | 数据处理 |
@@ -248,15 +253,30 @@ python scripts/05_evaluate_all.py
 
 ### Step 5: 启动 Web Demo
 
+项目提供两种前端界面：
+
+**方式一：FastAPI 桌面版（推荐）**
+
 ```bash
-python app/demo.py
+python app/server.py
+# 访问 http://127.0.0.1:8000
 ```
 
-基于 Gradio Blocks 构建，功能包括：
-- **模型选择下拉框**：在全部 7 个模型间实时切换，显示各模型的测试集指标
-- **单条预测**：输入评论，显示预测标签及正负类置信度
-- **示例库**：内置多条中文评论示例，点击即可快速测试
-- **延迟加载**：首次选择某模型时才加载权重，节省内存
+基于 FastAPI + 独立 HTML/CSS 前端，桌面优化双栏布局，暖调配色（象牙白底 + 琥珀金点缀）：
+- **模型选择下拉框**：在全部 7 个模型间实时切换，显示各模型的 Macro-F1 / Accuracy 徽章
+- **单条预测**：输入评论，显示带带动画进度条的情感结果卡片
+- **示例库**：内置中文评论示例，点击快速填入
+- **延迟加载**：首次使用某模型时才加载权重，节省内存
+- **快捷键**：`Ctrl+Enter` 快速分析
+
+**方式二：Gradio 版**
+
+```bash
+python app/demo.py
+# 访问 http://127.0.0.1:7860
+```
+
+基于 Gradio Blocks 构建，功能与 FastAPI 版相同，使用 Soft 主题 + 自定义卡片式布局。
 
 ---
 
@@ -769,7 +789,8 @@ ROBERTA_MODEL_NAME = "hfl/chinese-roberta-wwm-ext"
 - **无头服务器兼容**：`matplotlib` 使用 `Agg` 后端（非交互式渲染），可在无 GUI 的 GPU 服务器上正常保存图表。
 - **脚本独立性**：每个训练脚本是独立入口点，共享 `src/` 中的评估和可视化模块，但各自拥有独立的模型定义和训练逻辑。
 - **统一推理接口**：`app/model_loader.py` 的 `SentimentPredictor` 类为所有 7 种模型提供统一的 `predict(text) → (label, probs)` 接口，前端无需关心底层模型类型。
-- **延迟加载**：Web Demo 的预测器采用懒加载策略——仅当用户首次切换到某模型时才加载权重，降低内存占用和启动时间。
+- **两种前端**：Gradio 版 (`demo.py`) 快速搭建，开箱即用；FastAPI 桌面版 (`server.py` + `static/index.html`) 提供桌面优化的双栏布局，左右分区展示输入控件与分析结果。
+- **延迟加载**：两个版本的 Web Demo 均采用懒加载策略——仅当用户首次切换到某模型时才加载权重，降低内存占用和启动时间。
 
 ---
 
